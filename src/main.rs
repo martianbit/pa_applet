@@ -23,6 +23,8 @@ const DIALOG_POS_X: u32 = 1920 - DIALOG_WIDTH - 10;
 const DIALOG_POS_Y: u32 = 40;
 const ICONS_NAME: &str = "Papirus-Dark";
 
+static mut TRAY_ICON: Option<Rc<TrayIcon>> = None;
+
 fn set_volume(volume: u8) {
     let abs_volume = (volume as u32) * MAX_ABS_VOLUME / 100;
     Command::new("pactl").args(["set-sink-volume", "@DEFAULT_SINK@", &abs_volume.to_string()]).spawn().unwrap();
@@ -56,9 +58,6 @@ impl TrayIcon {
     unsafe fn new() -> Rc<Self> {
         let widget = QSystemTrayIcon::new();
 
-        widget.set_icon(&QIcon::from_theme_1a(&QString::from_std_str(get_correct_icon_name(get_current_volume()))));
-        widget.show();
-
         let this = Rc::new(Self {
             widget,
         });
@@ -69,6 +68,14 @@ impl TrayIcon {
 
     unsafe fn init(self: &Rc<Self>) {
         self.widget.activated().connect(&self.slot_on_click());
+        self.update_icon();
+
+        self.widget.show();
+    }
+
+    unsafe fn update_icon(self: &Rc<Self>) {
+        let icon_name = get_correct_icon_name(get_current_volume());
+        self.widget.set_icon(&QIcon::from_theme_1a(&QString::from_std_str(icon_name)));
     }
 
     #[slot(SlotNoArgs)]
@@ -78,8 +85,9 @@ impl TrayIcon {
         scale.set_value(get_current_volume() as f64);
         scale.set_draw_value(false);
 
-        scale.connect_value_changed(|x| {
+        scale.connect_value_changed(|x| unsafe {
             set_volume(x.value() as u8);
+            TRAY_ICON.as_ref().unwrap().update_icon();
         });
 
         let dialog = Dialog::new();
@@ -103,7 +111,7 @@ fn main() {
 
     QApplication::init(|_| unsafe {
         QIcon::set_theme_name(&QString::from_std_str(ICONS_NAME));
-        let _tray_icon = TrayIcon::new();
+        TRAY_ICON = Some(TrayIcon::new());
         QApplication::exec()
     });
 }
