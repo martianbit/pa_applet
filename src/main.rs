@@ -16,7 +16,6 @@ use qt_gui::QIcon;
 use qt_widgets::QApplication;
 use qt_widgets::QSystemTrayIcon;
 
-const SINK_INDEX: &str = "0";
 const MAX_ABS_VOLUME: u32 = 65537;
 const DIALOG_WIDTH: u32 = 200;
 const DIALOG_HEIGHT: u32 = 50;
@@ -26,7 +25,21 @@ const ICONS_NAME: &str = "Papirus-Dark";
 
 fn set_volume(volume: u8) {
     let abs_volume = (volume as u32) * MAX_ABS_VOLUME / 100;
-    Command::new("pacmd").args(["set-sink-volume", SINK_INDEX, &abs_volume.to_string()]).spawn().unwrap();
+    Command::new("pactl").args(["set-sink-volume", "@DEFAULT_SINK@", &abs_volume.to_string()]).spawn().unwrap();
+}
+
+fn get_current_volume() -> u8 {
+    let abs_volume_raw = String::from_utf8(Command::new("pactl").args(["get-sink-volume", "@DEFAULT_SINK@"]).output().unwrap().stdout).unwrap();
+    let abs_volume: u32 = abs_volume_raw.split_whitespace().nth(2).unwrap().parse().unwrap();
+
+    ((abs_volume as f64) * 100_f64 / (MAX_ABS_VOLUME as f64)).ceil() as u8
+}
+
+fn get_correct_icon_name(volume: u8) -> &'static str {
+    if volume == 0 { "audio-volume-muted" }
+    else if volume <= 33 { "audio-volume-low" }
+    else if volume <= 66 { "audio-volume-medium" }
+    else { "audio-volume-high" }
 }
 
 struct TrayIcon {
@@ -43,7 +56,7 @@ impl TrayIcon {
     unsafe fn new() -> Rc<Self> {
         let widget = QSystemTrayIcon::new();
 
-        widget.set_icon(&QIcon::from_theme_1a(&QString::from_std_str("audio-volume-high")));
+        widget.set_icon(&QIcon::from_theme_1a(&QString::from_std_str(get_correct_icon_name(get_current_volume()))));
         widget.show();
 
         let this = Rc::new(Self {
@@ -61,6 +74,9 @@ impl TrayIcon {
     #[slot(SlotNoArgs)]
     fn on_click(self: &Rc<Self>) {
         let scale = Scale::with_range(Orientation::Horizontal, 0_f64, 100_f64, 1_f64);
+
+        scale.set_value(get_current_volume() as f64);
+        scale.set_draw_value(false);
 
         scale.connect_value_changed(|x| {
             set_volume(x.value() as u8);
