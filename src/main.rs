@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use std::process::Command;
 use cpp_core::Ptr;
 use cpp_core::StaticUpcast;
 use gtk::prelude::*;
@@ -15,6 +16,8 @@ use qt_gui::QIcon;
 use qt_widgets::QApplication;
 use qt_widgets::QSystemTrayIcon;
 
+const SINK_INDEX: &str = "0";
+const MAX_ABS_VOLUME: u32 = 65536;
 const DIALOG_WIDTH: u32 = 200;
 const DIALOG_HEIGHT: u32 = 50;
 const DIALOG_POS_X: u32 = 1920 - DIALOG_WIDTH - 10;
@@ -22,6 +25,11 @@ const DIALOG_POS_Y: u32 = 40;
 const ICONS_NAME: &str = "Papirus-Dark";
 
 static mut DIALOG: Option<Dialog> = None;
+
+fn set_volume(volume: u8) {
+    let abs_volume = (volume as u32) * MAX_ABS_VOLUME / 100;
+    Command::new("pacmd").args(["set-sink-volume", SINK_INDEX, &abs_volume.to_string()]).spawn().unwrap();
+}
 
 struct TrayIcon {
     widget: QBox<QSystemTrayIcon>
@@ -54,23 +62,29 @@ impl TrayIcon {
 
     #[slot(SlotNoArgs)]
     unsafe fn on_click(self: &Rc<Self>) {
-        DIALOG.as_ref().unwrap().show_all();
+        let dialog = DIALOG.as_ref().unwrap();
+
+        dialog.show_all();
+        dialog.move_(DIALOG_POS_X as i32, DIALOG_POS_Y as i32);
     }
 }
 
 fn main() {
     gtk::init().unwrap();
 
+    let scale = Scale::with_range(Orientation::Horizontal, 0_f64, 100_f64, 1_f64);
+
+    scale.connect_value_changed(|x| {
+        set_volume(x.value() as u8);
+    });
+
     let dialog = Dialog::new();
 
-    dialog.move_(DIALOG_POS_X as i32, DIALOG_POS_Y as i32);
     dialog.resize(DIALOG_WIDTH as i32, DIALOG_HEIGHT as i32);
-
-    let scale = Scale::with_range(Orientation::Horizontal, 0_f64, 100_f64, 1_f64);
     dialog.content_area().pack_start(&scale, true, true, 0);
 
-    dialog.connect_focus_out_event(|_, _| unsafe {
-        DIALOG.as_ref().unwrap().hide();
+    dialog.connect_focus_out_event(|x, _| {
+        x.hide();
         Inhibit(false)
     });
 
