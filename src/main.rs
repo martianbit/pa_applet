@@ -26,17 +26,41 @@ const ICONS_NAME: &str = "Papirus-Dark";
 static mut TRAY_ICON: Option<Rc<TrayIcon>> = None;
 static mut CURRENT_ICON_NAME: Option<&str> = None;
 
-fn set_volume(volume: u8) {
+#[derive(Copy, Clone)]
+enum AudioFlow {
+    Sink,
+    Source,
+}
+
+impl AudioFlow {
+    fn get_special_name_of_default(self) -> &'static str {
+        match self {
+            Self::Sink => "@DEFAULT_SINK@",
+            Self::Source => "@DEFAULT_SOURCE@",
+        }
+    }
+}
+
+fn set_volume(volume: u8, audio_flow: AudioFlow) {
     let abs_volume = (volume as u32) * MAX_ABS_VOLUME / 100;
 
     Command::new("pactl")
-        .args(["set-sink-volume", "@DEFAULT_SINK@", &abs_volume.to_string()])
+        .arg(match audio_flow {
+            AudioFlow::Sink => "set-sink-volume",
+            AudioFlow::Source => "set-source-volume",
+        })
+        .arg(audio_flow.get_special_name_of_default())
+        .arg(&abs_volume.to_string())
         .spawn().unwrap();
 }
 
-fn get_current_volume() -> u8 {
+fn get_current_volume(audio_flow: AudioFlow) -> u8 {
     let abs_volume_raw = Command::new("pactl")
-        .args(["get-sink-volume", "@DEFAULT_SINK@"])
+        .arg(match audio_flow {
+            AudioFlow::Sink => "get-sink-volume",
+            AudioFlow::Source => "get-source-volume",
+        })
+        .arg(audio_flow.get_special_name_of_default())
         .output().unwrap();
 
     let abs_volume: u32 = String::from_utf8(abs_volume_raw.stdout).unwrap()
@@ -52,6 +76,25 @@ fn get_correct_icon_name(volume: u8) -> &'static str {
     else if volume < 50 { "audio-volume-low" }
     else if volume < 100 { "audio-volume-medium" }
     else { "audio-volume-high" }
+}
+
+fn build_slider(audio_flow: AudioFlow) -> Scale {
+    let slider = Scale::with_range(Orientation::Horizontal, 0_f64, 100_f64, 1_f64);
+
+    slider.set_value(get_current_volume(audio_flow) as f64);
+    slider.set_draw_value(false);
+
+    slider.connect_value_changed(match audio_flow {
+        AudioFlow::Sink => |x: &Scale| unsafe {
+            let new_volume = x.value() as u8;
+
+            set_volume(new_volume, AudioFlow::Sink);
+            TRAY_ICON.as_ref().unwrap().update_icon(new_volume);
+        },
+        AudioFlow::Source => |x: &Scale| set_volume(x.value() as u8, AudioFlow::Source),
+    });
+
+    slider
 }
 
 struct TrayIcon {
@@ -78,7 +121,7 @@ impl TrayIcon {
 
     unsafe fn init(self: &Rc<Self>) {
         self.widget.activated().connect(&self.slot_on_click());
-        self.update_icon(get_current_volume());
+        self.update_icon(get_current_volume(AudioFlow::Sink));
 
         self.widget.show();
     }
@@ -94,24 +137,18 @@ impl TrayIcon {
 
     #[slot(SlotNoArgs)]
     fn on_click(self: &Rc<Self>) {
-        let scale = Scale::with_range(Orientation::Horizontal, 0_f64, 100_f64, 1_f64);
-
-        scale.set_value(get_current_volume() as f64);
-        scale.set_draw_value(false);
-
-        scale.connect_value_changed(|x| unsafe {
-            let new_volume = x.value() as u8;
-
-            set_volume(new_volume);
-            TRAY_ICON.as_ref().unwrap().update_icon(new_volume);
-        });
+        let sink_slider = build_slider(AudioFlow::Sink);
+        let source_slider = build_slider(AudioFlow::Source);
 
         let dialog = Dialog::new();
+
+        let content_area = dialog.content_area();
 
         dialog.move_(DIALOG_POS_X as i32, DIALOG_POS_Y as i32);
         dialog.resize(DIALOG_WIDTH as i32, DIALOG_HEIGHT as i32);
 
-        dialog.content_area().pack_start(&scale, true, true, 0);
+        content_area.pack_start(&sink_slider, true, true, 0);
+        content_area.pack_start(&source_slider, true, true, 0);
 
         dialog.connect_focus_out_event(|x, _| {
             x.emit_close();
