@@ -7,6 +7,9 @@ use gtk::Dialog;
 use gtk::Scale;
 use gtk::Orientation;
 use gtk::Inhibit;
+use gtk::StyleContext;
+use gtk::CssProvider;
+use gdk::Display;
 use qt_core::QString;
 use qt_core::QObject;
 use qt_core::QBox;
@@ -18,9 +21,11 @@ use qt_widgets::QSystemTrayIcon;
 
 const MAX_ABS_VOLUME: u32 = 65536;
 const DIALOG_WIDTH: u32 = 200;
-const DIALOG_HEIGHT: u32 = 50;
 const DIALOG_POS_X: u32 = 1920 - DIALOG_WIDTH - 10;
 const DIALOG_POS_Y: u32 = 40;
+const DIALOG_BORDER_SIZE: u32 = 1;
+const DIALOG_BORDER_COLOR: &str = "#1B1B1B";
+const DIALOG_BG_COLOR: &str = "#2F2F2F";
 const ICONS_NAME: &str = "Papirus-Dark";
 
 static mut TRAY_ICON: Option<Rc<TrayIcon>> = None;
@@ -145,7 +150,7 @@ impl TrayIcon {
         let content_area = dialog.content_area();
 
         dialog.move_(DIALOG_POS_X as i32, DIALOG_POS_Y as i32);
-        dialog.resize(DIALOG_WIDTH as i32, DIALOG_HEIGHT as i32);
+        dialog.resize(DIALOG_WIDTH as i32, 1);
 
         content_area.pack_start(&sink_slider, true, true, 0);
         content_area.pack_start(&source_slider, true, true, 0);
@@ -161,6 +166,21 @@ impl TrayIcon {
 
 fn main() {
     gtk::init().unwrap();
+
+    let style_prov = CssProvider::new();
+
+    style_prov.load_from_data(
+        format!("dialog{{border:{}px solid {};background-color:{};}}",
+                DIALOG_BORDER_SIZE,
+                DIALOG_BORDER_COLOR,
+                DIALOG_BG_COLOR).as_bytes()
+    ).unwrap();
+
+    StyleContext::add_provider_for_screen(
+        &Display::default().unwrap().default_screen(),
+        &style_prov,
+        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION
+    );
 
     QApplication::init(|_| unsafe {
         QIcon::set_theme_name(&QString::from_std_str(ICONS_NAME));

@@ -622,6 +622,7 @@ name = "pa_applet"
 version = "0.1.0"
 dependencies = [
  "cpp_core",
+ "gdk",
  "gtk",
  "qt_core",
  "qt_gui",
