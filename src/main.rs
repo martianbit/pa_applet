@@ -5,6 +5,7 @@ use cpp_core::StaticUpcast;
 use gtk::prelude::*;
 use gtk::Dialog;
 use gtk::Scale;
+use gtk::PositionType;
 use gtk::Orientation;
 use gtk::Inhibit;
 use gtk::StyleContext;
@@ -26,6 +27,7 @@ const DIALOG_POS_Y: u32 = 40;
 const DIALOG_BORDER_SIZE: u32 = 1;
 const DIALOG_BORDER_COLOR: &str = "#1B1B1B";
 const DIALOG_BG_COLOR: &str = "#2F2F2F";
+const FONT_NAME: &str = "Monaco";
 const ICONS_NAME: &str = "Papirus-Dark";
 
 static mut TRAY_ICON: Option<Rc<TrayIcon>> = None;
@@ -87,7 +89,7 @@ fn build_slider(audio_flow: AudioFlow) -> Scale {
     let slider = Scale::with_range(Orientation::Horizontal, 0_f64, 100_f64, 1_f64);
 
     slider.set_value(get_current_volume(audio_flow) as f64);
-    slider.set_draw_value(false);
+    slider.set_value_pos(PositionType::Left);
 
     slider.connect_value_changed(match audio_flow {
         AudioFlow::Sink => |x: &Scale| unsafe {
@@ -97,6 +99,11 @@ fn build_slider(audio_flow: AudioFlow) -> Scale {
             TRAY_ICON.as_ref().unwrap().update_icon(new_volume);
         },
         AudioFlow::Source => |x: &Scale| set_volume(x.value() as u8, AudioFlow::Source),
+    });
+
+    slider.connect_format_value(match audio_flow {
+        AudioFlow::Sink => |_: &Scale, x| format!("sink {}", x),
+        AudioFlow::Source => |_: &Scale, x| format!("srce {}", x),
     });
 
     slider
@@ -170,7 +177,8 @@ fn main() {
     let style_prov = CssProvider::new();
 
     style_prov.load_from_data(
-        format!("dialog{{border:{}px solid {};background-color:{};}}",
+        format!("*{{font-family:{};}}dialog{{border:{}px solid {};background-color:{};}}",
+                FONT_NAME,
                 DIALOG_BORDER_SIZE,
                 DIALOG_BORDER_COLOR,
                 DIALOG_BG_COLOR).as_bytes()
