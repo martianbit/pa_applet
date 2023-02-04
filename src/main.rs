@@ -21,7 +21,7 @@ use qt_widgets::QApplication;
 use qt_widgets::QSystemTrayIcon;
 
 const MAX_ABS_VOLUME: u32 = 65536;
-const DIALOG_WIDTH: u32 = 200;
+const DIALOG_WIDTH: u32 = 300;
 const DIALOG_POS_X: u32 = 1920 - DIALOG_WIDTH - 10;
 const DIALOG_POS_Y: u32 = 40;
 const DIALOG_BORDER_SIZE: u32 = 1;
